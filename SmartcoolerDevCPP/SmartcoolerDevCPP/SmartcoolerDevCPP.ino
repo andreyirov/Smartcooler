@@ -11,6 +11,7 @@
 #define DEVICE_TYPE "SmartCooler" // тип устройства
 #define TOKEN "12345678" // - задаешь в IOT хабе
 #define COOLER_ID "C2MCOOLER2"
+
 // EEPROM - разделение области памяти
 #define ModeoffSet 0 // начальный байт: 0 байт - режим загрузки устройства
 #define SizeMode 1 // - размер памяти Mode байт -1
