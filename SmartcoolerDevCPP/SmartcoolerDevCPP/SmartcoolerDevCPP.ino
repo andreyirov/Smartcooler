@@ -402,7 +402,7 @@ void loop() {
 
 		Vvoter = (ves.read_average(10) - atof(dwRead))*atof(BRead) / (atof(fwRead) - atof(dwRead));
 		long now = millis();
-		if (Vvoter < oldVvoter - 0.2 || Vvoter > oldVvoter + 19 || now - lastMsg > 10000) // передаем сообщение при изменении массы или по  таймауту
+		if (Vvoter < oldVvoter - 0.2 || Vvoter > oldVvoter + 19 || now - lastMsg > 600000) // передаем сообщение при изменении массы или по  таймауту 10 мин
 		{
 			delay(5000); // ждем пока  закочатся колебания вызваные изменением веса
 			Vvoter = (ves.read_average(10) - atof(dwRead))*atof(BRead) / (atof(fwRead) - atof(dwRead));
