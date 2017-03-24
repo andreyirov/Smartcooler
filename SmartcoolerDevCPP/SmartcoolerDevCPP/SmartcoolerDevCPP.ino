@@ -10,7 +10,6 @@
 #define ORG "kwxqcy" // имя организации
 #define DEVICE_TYPE "SmartCooler" // тип устройства
 #define TOKEN "12345678" // - задаешь в IOT хабе
-#define COOLER_ID "C2MCOOLER2"
 
 // EEPROM - разделение области памяти
 #define ModeoffSet 0 // начальный байт: 0 байт - режим загрузки устройства
@@ -27,10 +26,12 @@
 #define SizeOrgID 32 // размер памяти Device ID байт
 #define DWoffSet 165 //  начальный байт: 65-75 байт- значение сухого весеа
 #define SizeDW  10 // размер памяти DW
-#define FWoffSet 175 //  начальный байт:  значение полного весеа
+#define FWoffSet 176 //  начальный байт:  значение полного весеа
 #define SizeFW  10 // размер памяти вес бутылки
-#define BoffSet 185 //  начальный байт: вес бутылки
+#define BoffSet 187 //  начальный байт: вес бутылки
 #define SizeB  5 // размер памяти Полный вес
+#define BoffSetV 193 //  начальный байт: обьем бутылки
+#define SizeBV  5 // размер памяти обьем
 
 
 char mqttserver[] = ORG ".messaging.internetofthings.ibmcloud.com"; // подключаемся к Blumix
@@ -38,7 +39,6 @@ char topic[] = "iot-2/evt/status/fmt/json";
 char restopic[] = "iot-2/cmd/rele/fmt/json";
 char authMethod[] = "use-token-auth";
 char token[] = TOKEN;
-//char clientId[] = "d:" ORG ":" DEVICE_TYPE ":" DEVICE_ID; // переопределили ниже, после считывания Device ID из EEPROM
 String clientID = "d:" ORG ":" DEVICE_TYPE ":";
 char  cID[100]; // используется для формирования конечного Client ID
 float dryWeight;
@@ -54,7 +54,7 @@ float oldVvoter = 500;
 HX711 ves; // создаем переменную для работы с АЦП 711
 char ssid[32];
 char password[32];
-char* cfg_ssid = "co12"; // SSID передаваемое в режиме AP кулером
+char* cfg_ssid = "sc01"; // SSID передаваемое в режиме AP кулером
 char* cfg_password = "87654321"; // Password для доступа в Cooler
 
 long lastMsg = 0;
@@ -68,10 +68,12 @@ String stpsw;
 String DeviceID;
 String IDclient;
 String Bottle;
+String BottleV;
 char   dvid[32];
 char  dwRead[10];
 char  fwRead[10];
 char  BRead[5];
+char  BReadV[5];
 int statusCode;
 
 int MODE; // Режим загрузки
@@ -100,6 +102,7 @@ void setup() {
 	EEread(dwRead, DWoffSet, SizeDW); //загрузаем значение сухого веса из EEPROM
 	EEread(fwRead, FWoffSet, SizeFW); //загрузаем значение полного  веса из EEPROM
 	EEread(BRead, BoffSet, SizeB); //загрузаем значение  веса бутылки из EEPROM
+	EEread(BReadV, BoffSetV, SizeBV);
 	EEread(dvid, DeviceIDoffset, SizeDeviceID); // загружаем значение  Device ID;
 
 	if (MODE == 1) // Нормальный режим ___________________________________________________________
@@ -162,6 +165,7 @@ void myconnect() {
 
 // В номрмальном режиме
 void messageReceived(String restopic, String payload, char * bytes, unsigned int length) {
+	Serial.println("inpuuuuut");
 	if (payload == "{\"rel\":1}") {  // Включить реле
 		digitalWrite(RELE, HIGH);
 		Serial.println("RELE_ON");
@@ -171,12 +175,12 @@ void messageReceived(String restopic, String payload, char * bytes, unsigned int
 		Serial.println("RELE_OFF");
 	}
 
-	else if (payload == "{\"rel\":8}") { // Прошивка по воздуху
-										 //String uploadfile = String(dvid);
-										 //uploadfile += ".bin";
-		t_httpUpdate_return ret = ESPhttpUpdate.update("10.0.0.167", 80, "x1.bin");
-		Serial.println("NO Update OTA");
-	}
+	//else if (payload == "{\"rel\":8}") { // Прошивка по воздуху
+	//									 //String uploadfile = String(dvid);
+	//									 //uploadfile += ".bin";
+	//	t_httpUpdate_return ret = ESPhttpUpdate.update("10.0.0.167", 80, "x1.bin");
+	//	Serial.println("NO Update OTA");
+	//}
 
 	else {
 		Serial.println("no_action");
@@ -187,8 +191,10 @@ String outmessage(float V, char* DeviceID)
 {
 	String pl = "{ \"d\" : {\"deviceid\":\"";
 	pl += DeviceID;
-	pl += "\",\"v\":\"";
+	pl += "\",\"curv\":\"";
 	pl += V;
+	pl += "\",\"maxv\":\"";
+	pl += BReadV;
 	pl += "\"}}";
 	return pl;
 }
@@ -232,6 +238,7 @@ void createWebServer(int webtype)
 			EEread(dwRead, DWoffSet, SizeDW);
 			EEread(fwRead, FWoffSet, SizeFW);
 			EEread(BRead, BoffSet, SizeB);
+			EEread(BReadV, BoffSetV, SizeBV);
 			EEread(dvid, DeviceIDoffset, SizeDeviceID);
 			//_______________________________________________________
 			content = "<!DOCTYPE HTML>\r\n<html>  <head> <meta http-equiv=\"Content - Type\" content=\"text / html; charset = utf-8\"> </head> <h1>Smart Cooler настройка</h1> <h2>Текущие значения:</h2>";
@@ -245,6 +252,8 @@ void createWebServer(int webtype)
 			content += fwRead;
 			content += "Bottle Weight :";
 			content += BRead;
+			content += "Bottle V:";
+			content += BReadV;
 			content += "  Device ID :";
 			content += dvid;
 			//_______________________________________________________
@@ -269,10 +278,13 @@ void createWebServer(int webtype)
 			content += "<form method='get' action='fw'><input type='submit' value='Save Full Weight'></form>";
 			//______________________________________________________
 
-			content += "<hr><h3>Изменение веса бутыли </h3> ";
+			content += "<hr><h3>Изменение обьема и веса емкости </h3> ";
 			content += "<form method='get' action='bot'>";
-			content += "<label>Введите вес бутыли : </label><input type='text' name='BotW' value='19.83' length=6><br><br>";
-			content += "<input type='submit' value='Сохранить Вес бутыли'></form>";
+			content += "<label>Введите вес емкости : </label><input type='text' name='BotW' value='19.83' length=6><br><br>";
+			content += "<input type='submit' value='Сохранить вес емкости'></form>";
+			content += "<form method='get' action='botV'>";
+			content += "<label>Введите объем емкости : </label><input type='text' name='BotV' value='19' length=6><br><br>";
+			content += "<input type='submit' value='Сохранить объем емкости'></form>";
 			//______________________________________________________
 			content += "<hr><h2> Переключение в рабочий режим </h2>";
 			content += "<p><font  color=\"red\"> После переключения перезагрузите устройство.</font> </p>";
@@ -352,7 +364,19 @@ void createWebServer(int webtype)
 			Bottle = server.arg("BotW");
 			EEwrite(Bottle, BoffSet, SizeB);
 			content = "<!DOCTYPE HTML>\r\n<html>";
-			content += "<p> Вес бутыли сохранен <br>";
+			content += "<p> Вес емкости сохранен <br>";
+			content += "</p>";
+			content += "<a href='/'>Вернуться к конфигурации</a>";
+			content += "</html>";
+			server.send(200, "text/html", content);
+
+		});
+
+		server.on("/botV", []() {
+			BottleV = server.arg("BotV");
+			EEwrite(BottleV, BoffSetV, SizeBV);
+			content = "<!DOCTYPE HTML>\r\n<html>";
+			content += "<p> Объем емкости сохранен <br>";
 			content += "</p>";
 			content += "<a href='/'>Вернуться к конфигурации</a>";
 			content += "</html>";
@@ -399,33 +423,39 @@ void EEwrite(String indata, byte offSet, byte Size) // Запись в EEPROM
 void loop() {
 	if (MODE == 1)
 	{
-
-		Vvoter = (ves.read_average(10) - atof(dwRead))*atof(BRead) / (atof(fwRead) - atof(dwRead));
-		long now = millis();
-		if (Vvoter < oldVvoter - 0.2 || Vvoter > oldVvoter + 19 || now - lastMsg > 600000) // передаем сообщение при изменении массы или по  таймауту 10 мин
+	if ((atof(fwRead) - atof(dwRead)) != 0)
 		{
-			delay(5000); // ждем пока  закочатся колебания вызваные изменением веса
 			Vvoter = (ves.read_average(10) - atof(dwRead))*atof(BRead) / (atof(fwRead) - atof(dwRead));
+			long now = millis();
+			if (Vvoter < oldVvoter - 0.2 || Vvoter > oldVvoter + 19 || now - lastMsg > 300000) // передаем сообщение при изменении массы или по  таймауту 5  сек (еще 5 сек ниже).
+			{
+				delay(5000); // ждем пока  закочатся колебания вызваные изменением веса 
+				Vvoter = (ves.read_average(10) - atof(dwRead))*atof(BRead) / (atof(fwRead) - atof(dwRead));
 
-			if (!client.connected()) {
-				reconnect();
+				if (!client.connected()) {
+					reconnect();
+				}
+				lastMsg = now;
+				oldVvoter = Vvoter;
+				String payload =outmessage(Vvoter, dvid);
+				Serial.print("Publish message: ");
+				Serial.println(payload);
+				client.publish(topic, (char*)payload.c_str());
+				Serial.println("Ver-A: ");
 			}
-			lastMsg = now;
-			oldVvoter = Vvoter;
-			String payload = outmessage(Vvoter, dvid);
-			Serial.print("Publish message: ");
-			Serial.println(payload);
-			client.publish(topic, (char*)payload.c_str());
-			Serial.println("Ver-A: ");
 		}
-		client.loop();
-		delay(10);
-	}
+		else
+		{
+			Serial.print("Error! FullWeight = DryWeight");
+		}
+			client.loop();
+			delay(10);
+		}
 	if (MODE != 1)
 	{
 		server.handleClient();
 		long now = millis();
-		if (now - starttime > 300000)  // Через 5 мин нахождения в конфигурационном режиме, перезагружаемся в основной режим
+		if (now - starttime > 600000)  // Через 10 мин нахождения в конфигурационном режиме, перезагружаемся в основной режим
 		{
 			EEPROM.write(0, 1);
 			EEPROM.commit();
