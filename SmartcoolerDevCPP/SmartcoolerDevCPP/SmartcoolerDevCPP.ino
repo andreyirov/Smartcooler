@@ -24,11 +24,11 @@
 #define SizeDeviceType 32 // размер памяти Device ID байт
 #define OrgIDoffset 132 // начальный байт Device ID
 #define SizeOrgID 32 // размер памяти Device ID байт
-#define DWoffSet 165 //  начальный байт: 65-75 байт- значение сухого весеа
+#define DWoffSet 165 //  начальный байт: 65-75 байт- значение веса пустой площадки
 #define SizeDW  10 // размер памяти DW
-#define FWoffSet 176 //  начальный байт:  значение полного весеа
-#define SizeFW  10 // размер памяти вес бутылки
-#define BoffSet 187 //  начальный байт: вес бутылки
+#define FWoffSet 176 //  начальный байт:  значение веса площадки с кулером
+#define SizeFW  10 // размер памяти вес кулера
+#define BoffSet 187 //  начальный байт: вес кулера
 #define SizeB  5 // размер памяти Полный вес
 #define BoffSetV 193 //  начальный байт: обьем бутылки
 #define SizeBV  5 // размер памяти обьем
@@ -47,8 +47,8 @@ float FullWeight;
 
 int DOUT = 5;   // HX711.DOUT Данные с датчика веса
 int SCK1 = 4;  // HX711.PD_SCK Тактирование датчика веса
-int RELE = 14; // RELE на D05  в лекгой версии - светодид
-int BUTTON = 12; // Кнопка Setup
+int RELE = 14; // RELE на D05   NodeMCU
+int BUTTON = 12; // Кнопка Setup на D06 - NodeMCU
 float Vvoter = 0;
 float oldVvoter = 500;
 HX711 ves; // создаем переменную для работы с АЦП 711
@@ -96,12 +96,12 @@ void setup() {
 		// wait serial port initialization
 	}
 	pinMode(BUTTON, INPUT_PULLUP); // Устанавливем пин кнопки на чтение подтягиваем к +
-	attachInterrupt(BUTTON, myreboot, HIGH); // Устанавливаем прерывание на пин
+	attachInterrupt(BUTTON, myreboot, FALLING); // Устанавливаем прерывание на кнопку
 	EEPROM.begin(512);
 	MODE = EEPROM.read(0); // определяем режим загрузки   читаем 0 байт EEPROM- если 0 - режим конфигурации если 1 -рабочий режим
-	EEread(dwRead, DWoffSet, SizeDW); //загрузаем значение сухого веса из EEPROM
-	EEread(fwRead, FWoffSet, SizeFW); //загрузаем значение полного  веса из EEPROM
-	EEread(BRead, BoffSet, SizeB); //загрузаем значение  веса бутылки из EEPROM
+	EEread(dwRead, DWoffSet, SizeDW); //загрузаем значение веса голой полощадки из EEPROM
+	EEread(fwRead, FWoffSet, SizeFW); //загрузаем значение   веса  площадки с кулером из EEPROM
+	EEread(BRead, BoffSet, SizeB); //загрузаем значение  веса кулера из EEPROM
 	EEread(BReadV, BoffSetV, SizeBV);
 	EEread(dvid, DeviceIDoffset, SizeDeviceID); // загружаем значение  Device ID;
 
@@ -116,7 +116,7 @@ void setup() {
 		Serial.println("Password");
 		Serial.println(password);
 		Serial.println("ID client:");
-		//Погдотавливаем Client ID и записчваем в macив, т.к. String MQTTClient не принимает
+		//Погдотавливаем Client ID и записываем в macив, т.к. String MQTTClient не принимает
 		clientID += String(dvid);
 		int str_len = clientID.length() + 1;
 		clientID.toCharArray(cID, 50);
@@ -135,16 +135,13 @@ void setup() {
 		Serial.println("Mode-0 -Config mode- Start");
 		WiFi.printDiag(Serial);
 		ves.begin(DOUT, SCK1, 128);
-		//WiFi.mode(WIFI_AP); // Здесь можно насторить режим AP, выдаваемый IP Gateway Subnet ip ADRESS, нас устраивет значение по умолчанию 192.168.4.1
-
 		IPAddress APIP(10, 0, 0, 100);
 		IPAddress gateway(10, 0, 0, 1);
 		IPAddress subnet(255, 255, 255, 0);
 		WiFi.softAPConfig(APIP, gateway, subnet);
 		WiFi.softAP(cfg_ssid, cfg_password);
-		starttime = millis(); // сохраняем время перехода в режим 0, через 5 мин
+		starttime = millis(); // сохраняем время перехода в режим 0, через 10 мин
 		launchWebAP(0);//OK
-					   //return;
 	}
 }
 
@@ -194,7 +191,7 @@ String outmessage(float V, char* DeviceID)
 	pl += "\",\"curv\":\"";
 	pl += V;
 	pl += "\",\"maxv\":\"";
-	pl += BReadV;
+	pl += BReadV; //передаем объем бутыли
 	pl += "\"}}";
 	return pl;
 }
@@ -246,13 +243,9 @@ void createWebServer(int webtype)
 			content += ssid;
 			content += "  Password:";
 			content += password;
-			content += "<br>  Dry Weight :";
-			content += dwRead;
-			content += "Full Weight :";
-			content += fwRead;
-			content += "Bottle Weight :";
+			content += " Вес кулера :";
 			content += BRead;
-			content += "Bottle V:";
+			content += " объем емкости:";
 			content += BReadV;
 			content += "  Device ID :";
 			content += dvid;
@@ -268,22 +261,20 @@ void createWebServer(int webtype)
 			content += "<label>DeviceID: </label><input name='DeviceID' length=32><br><br>";
 			content += "<input type='submit' value='Сохранить Device ID'></form>";
 			//______________________________________________________
-			content += "<h2> Калибровка веса пустрого кулера </h2>";
-			content += "<p> Установите пустой кулер ровно на подставку, нажмите кнопку Save Dry Weight. </p>";
-			content += "<p><font  color=\"red\"> Не нажимайте кнопку сохранить сухой вес если в кулере есть вода.</font> </p>";
-			content += "<p><font  color=\"blue\"> Если вы случайно сохранили сухой вес при наличии воды: <br> 1)снимите бутыль с кулера,<br> 2)слейте остатки воды из кулера <br> 3)нажмите кнопку сохранить сухой вес.</font> </p>";
-			content += "<form method='get' action='dw'><input type='submit' value='Save Dry Weight'></form>";
-			content += "<h2> Калибровка веса Полного  кулера </h2>";
-			content += "<p> Установите полную бутылку в  кулер, подождите 10 секунд , нажмите кнопку Save Full Weight. </p>";
-			content += "<form method='get' action='fw'><input type='submit' value='Save Full Weight'></form>";
+			content += "<h2> Калибровка пустая площадка </h2>";
+			content += "<p> Установите ровно пустую полощадку, нажмите кнопку Сохранить вес пустой площадки. </p>";
+			content += "<form method='get' action='dw'><input type='submit' value='Сохранить вес пустой площадки'></form>";
+			content += "<h2> Калибровка веса площадки с  кулером </h2>";
+			content += "<p> Установите кулер на площадку, подождите 10 секунд , нажмите кнопку Сохранить вес площадки с кулером. </p>";
+			content += "<form method='get' action='fw'><input type='submit' value='Сохранить вес площадки с кулером'></form>";
 			//______________________________________________________
 
-			content += "<hr><h3>Изменение обьема и веса емкости </h3> ";
+			content += "<hr><h3>Изменение  веса кулера и объема бутылки</h3> ";
 			content += "<form method='get' action='bot'>";
-			content += "<label>Введите вес емкости : </label><input type='text' name='BotW' value='19.83' length=6><br><br>";
-			content += "<input type='submit' value='Сохранить вес емкости'></form>";
+			content += "<label>Введите вес кулера (в кг.) : </label><input type='text' name='BotW' value='23' length=6><br><br>";
+			content += "<input type='submit' value='Сохранить вес кулера'></form>";
 			content += "<form method='get' action='botV'>";
-			content += "<label>Введите объем емкости : </label><input type='text' name='BotV' value='19' length=6><br><br>";
+			content += "<label>Введите объем емкости (в л.) : </label><input type='text' name='BotV' value='19' length=6><br><br>";
 			content += "<input type='submit' value='Сохранить объем емкости'></form>";
 			//______________________________________________________
 			content += "<hr><h2> Переключение в рабочий режим </h2>";
@@ -394,7 +385,7 @@ void myreboot() // Перезагрузка в режим конфигуриро
 	//ESP.reset();
 	ESP.restart();
 }
-void EEread(char* eeprval, byte offSet, byte Size) // Чтение зи EEPROM
+void EEread(char* eeprval, byte offSet, byte Size) // Чтение из EEPROM
 {
 	for (int i = 0; i <= Size; ++i)
 	{
@@ -425,12 +416,12 @@ void loop() {
 	{
 	if ((atof(fwRead) - atof(dwRead)) != 0)
 		{
-			Vvoter = (ves.read_average(10) - atof(dwRead))*atof(BRead) / (atof(fwRead) - atof(dwRead));
+			Vvoter = (ves.read_average(10) - atof(fwRead)) * atof(BRead) / (atof(fwRead) - atof(dwRead));
 			long now = millis();
-			if (Vvoter < oldVvoter - 0.2 || Vvoter > oldVvoter + 19 || now - lastMsg > 300000) // передаем сообщение при изменении массы или по  таймауту 5  сек (еще 5 сек ниже).
+			if (Vvoter < oldVvoter - 0.2 || Vvoter > oldVvoter + 1 || now - lastMsg > 30000) // передаем сообщение при изменении массы или по  таймауту 
 			{
-				delay(5000); // ждем пока  закочатся колебания вызваные изменением веса 
-				Vvoter = (ves.read_average(10) - atof(dwRead))*atof(BRead) / (atof(fwRead) - atof(dwRead));
+				delay(3000); // ждем пока  закочатся колебания вызваные изменением веса 
+				Vvoter = (ves.read_average(10) - atof(fwRead)) * atof(BRead) / (atof(fwRead) - atof(dwRead));
 
 				if (!client.connected()) {
 					reconnect();
@@ -441,7 +432,7 @@ void loop() {
 				Serial.print("Publish message: ");
 				Serial.println(payload);
 				client.publish(topic, (char*)payload.c_str());
-				Serial.println("Ver-A: ");
+				Serial.println("Ver- b.01");
 			}
 		}
 		else
