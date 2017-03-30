@@ -192,9 +192,9 @@ String outmessage(float V, char* DeviceID)
 {
 	String pl = "{ \"d\" : {\"deviceid\":\"";
 	pl += DeviceID;
-	pl += "\",\"curv\":\"";
+	pl += "\",\"param1\":\"";
 	pl += V;
-	pl += "\",\"maxv\":\"";
+	pl += "\",\"param2\":\"";
 	pl += BReadV; //передаем объем бутыли
 	pl += "\"}}";
 	return pl;
@@ -438,7 +438,7 @@ void loop() {
 		{
 			Vvoter = ((ves.read_average(10) - atof(fwRead)) * atof(BRead) / (atof(fwRead) - atof(dwRead))- atof(mTara));
 			long now = millis();
-			if (Vvoter < oldVvoter - 0.2 || Vvoter > oldVvoter + 1 || now - lastMsg > 30000) // передаем сообщение при изменении массы или по  таймауту 
+			if (Vvoter < oldVvoter - 0.2 || Vvoter > oldVvoter + 1 || now - lastMsg > 3000) // передаем сообщение при изменении массы или по  таймауту 
 			{
 				delay(3000); // ждем пока  закочатся колебания вызваные изменением веса 
 				Vvoter = ((ves.read_average(10) - atof(fwRead)) * atof(BRead) / (atof(fwRead) - atof(dwRead)) - atof(mTara));
