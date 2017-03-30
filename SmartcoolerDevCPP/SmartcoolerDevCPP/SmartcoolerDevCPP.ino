@@ -32,7 +32,8 @@
 #define SizeB  5 // размер памяти Полный вес
 #define BoffSetV 193 //  начальный байт: обьем бутылки
 #define SizeBV  5 // размер памяти обьем
-
+#define TaraoffSet 199 //  начальный байт: обьем бутылки
+#define TaraSize  5 // размер памяти обьем
 
 char mqttserver[] = ORG ".messaging.internetofthings.ibmcloud.com"; // подключаемся к Blumix
 char topic[] = "iot-2/evt/status/fmt/json";
@@ -69,11 +70,13 @@ String DeviceID;
 String IDclient;
 String Bottle;
 String BottleV;
+String Tara;
 char   dvid[32];
 char  dwRead[10];
 char  fwRead[10];
 char  BRead[5];
 char  BReadV[5];
+char  mTara[5];
 int statusCode;
 
 int MODE; // Режим загрузки
@@ -104,6 +107,7 @@ void setup() {
 	EEread(BRead, BoffSet, SizeB); //загрузаем значение  веса кулера из EEPROM
 	EEread(BReadV, BoffSetV, SizeBV);
 	EEread(dvid, DeviceIDoffset, SizeDeviceID); // загружаем значение  Device ID;
+	EEread(mTara, TaraoffSet, TaraSize); // загружаем значение  веса бутылки;
 
 	if (MODE == 1) // Нормальный режим ___________________________________________________________
 	{
@@ -124,7 +128,7 @@ void setup() {
 		delay(1);
 		WiFi.begin(ssid, password);
 		pinMode(RELE, OUTPUT); // настройка пина RELE на выход
-		digitalWrite(RELE, LOW); // выключение реле
+		digitalWrite(RELE, HIGH); // включение реле
 		ves.begin(DOUT, SCK1, 128); // инициализация АЦП
 		client.begin(mqttserver, 8883, net); // 8883-sec 1883 -no sec
 		myconnect();
@@ -237,6 +241,7 @@ void createWebServer(int webtype)
 			EEread(BRead, BoffSet, SizeB);
 			EEread(BReadV, BoffSetV, SizeBV);
 			EEread(dvid, DeviceIDoffset, SizeDeviceID);
+			EEread(mTara, TaraoffSet, TaraSize);
 			//_______________________________________________________
 			content = "<!DOCTYPE HTML>\r\n<html>  <head> <meta http-equiv=\"Content - Type\" content=\"text / html; charset = utf-8\"> </head> <h1>Smart Cooler настройка</h1> <h2>Текущие значения:</h2>";
 			content += "SSID=";
@@ -245,9 +250,11 @@ void createWebServer(int webtype)
 			content += password;
 			content += " Вес кулера :";
 			content += BRead;
-			content += " объем емкости:";
+			content += " Объем емкости:";
 			content += BReadV;
-			content += "  Device ID :";
+			content += "  Вес емкости :";
+			content += mTara;
+			content += " ID кулера:";
 			content += dvid;
 			//_______________________________________________________
 			content += " <hr><h2> Введите новые значения SSID и  Password </h2>";
@@ -261,21 +268,22 @@ void createWebServer(int webtype)
 			content += "<label>DeviceID: </label><input name='DeviceID' length=32><br><br>";
 			content += "<input type='submit' value='Сохранить Device ID'></form>";
 			//______________________________________________________
-			content += "<h2> Калибровка пустая площадка </h2>";
-			content += "<p> Установите ровно пустую полощадку, нажмите кнопку Сохранить вес пустой площадки. </p>";
+			content += "<h2> Калибровка  </h2>";
+			content += "<p> Установите на пол ровно пустую полощадку, нажмите кнопку Сохранить вес пустой площадки. </p>";
 			content += "<form method='get' action='dw'><input type='submit' value='Сохранить вес пустой площадки'></form>";
-			content += "<h2> Калибровка веса площадки с  кулером </h2>";
 			content += "<p> Установите кулер на площадку, подождите 10 секунд , нажмите кнопку Сохранить вес площадки с кулером. </p>";
 			content += "<form method='get' action='fw'><input type='submit' value='Сохранить вес площадки с кулером'></form>";
 			//______________________________________________________
-
-			content += "<hr><h3>Изменение  веса кулера и объема бутылки</h3> ";
+			content += "<hr><h3>Изменение  веса кулера, веса и объема емкости</h3> ";
 			content += "<form method='get' action='bot'>";
-			content += "<label>Введите вес кулера (в кг.) : </label><input type='text' name='BotW' value='23' length=6><br><br>";
+			content += "<label>Введите вес кулера (в кг.)        : </label><input type='text' name='BotW' value='23' length=5>";
 			content += "<input type='submit' value='Сохранить вес кулера'></form>";
 			content += "<form method='get' action='botV'>";
-			content += "<label>Введите объем емкости (в л.) : </label><input type='text' name='BotV' value='19' length=6><br><br>";
+			content += "<label>Введите объем емкости (в л.)      : </label><input type='text' name='BotV' value='19' length=5>";
 			content += "<input type='submit' value='Сохранить объем емкости'></form>";
+			content += "<form method='get' action='botMass'>";
+			content += "<label>Введите вес емкости (в кг.)       : </label><input type='text' name='Tara' value='0.83' length=5>";
+			content += "<input type='submit' value='Сохранить вес емкости'></form>";
 			//______________________________________________________
 			content += "<hr><h2> Переключение в рабочий режим </h2>";
 			content += "<p><font  color=\"red\"> После переключения перезагрузите устройство.</font> </p>";
@@ -374,6 +382,18 @@ void createWebServer(int webtype)
 			server.send(200, "text/html", content);
 
 		});
+
+		server.on("/botMass", []() {
+			Tara = server.arg("Tara");
+			EEwrite(Tara, TaraoffSet, TaraSize);
+			content = "<!DOCTYPE HTML>\r\n<html>";
+			content += "<p> Объем емкости сохранен <br>";
+			content += "</p>";
+			content += "<a href='/'>Вернуться к конфигурации</a>";
+			content += "</html>";
+			server.send(200, "text/html", content);
+
+		});
 	}
 }
 void myreboot() // Перезагрузка в режим конфигурирования при нажатии кнопки
@@ -416,12 +436,12 @@ void loop() {
 	{
 	if ((atof(fwRead) - atof(dwRead)) != 0)
 		{
-			Vvoter = (ves.read_average(10) - atof(fwRead)) * atof(BRead) / (atof(fwRead) - atof(dwRead));
+			Vvoter = ((ves.read_average(10) - atof(fwRead)) * atof(BRead) / (atof(fwRead) - atof(dwRead))- atof(mTara));
 			long now = millis();
 			if (Vvoter < oldVvoter - 0.2 || Vvoter > oldVvoter + 1 || now - lastMsg > 30000) // передаем сообщение при изменении массы или по  таймауту 
 			{
 				delay(3000); // ждем пока  закочатся колебания вызваные изменением веса 
-				Vvoter = (ves.read_average(10) - atof(fwRead)) * atof(BRead) / (atof(fwRead) - atof(dwRead));
+				Vvoter = ((ves.read_average(10) - atof(fwRead)) * atof(BRead) / (atof(fwRead) - atof(dwRead)) - atof(mTara));
 
 				if (!client.connected()) {
 					reconnect();
