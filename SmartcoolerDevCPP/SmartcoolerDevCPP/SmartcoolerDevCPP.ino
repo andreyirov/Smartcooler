@@ -99,7 +99,7 @@ void setup() {
 		// wait serial port initialization
 	}
 	pinMode(BUTTON, INPUT_PULLUP); // Устанавливем пин кнопки на чтение подтягиваем к +
-	attachInterrupt(BUTTON, myreboot, FALLING); // Устанавливаем прерывание на кнопку
+	//attachInterrupt(BUTTON, myreboot, FALLING); // Устанавливаем прерывание на кнопку
 	EEPROM.begin(512);
 	MODE = EEPROM.read(0); // определяем режим загрузки   читаем 0 байт EEPROM- если 0 - режим конфигурации если 1 -рабочий режим
 	EEread(dwRead, DWoffSet, SizeDW); //загрузаем значение веса голой полощадки из EEPROM
@@ -108,6 +108,15 @@ void setup() {
 	EEread(BReadV, BoffSetV, SizeBV);
 	EEread(dvid, DeviceIDoffset, SizeDeviceID); // загружаем значение  Device ID;
 	EEread(mTara, TaraoffSet, TaraSize); // загружаем значение  веса бутылки;
+	delay(1000);
+	if (digitalRead(BUTTON) == LOW)
+	{
+		MODE = 0;
+		EEPROM.write(0, 0); 
+		EEPROM.commit();
+	}
+
+
 
 	if (MODE == 1) // Нормальный режим ___________________________________________________________
 	{
@@ -125,10 +134,11 @@ void setup() {
 		int str_len = clientID.length() + 1;
 		clientID.toCharArray(cID, 50);
 		Serial.println(cID);
+		WiFi.mode(WIFI_STA);
 		delay(1);
 		WiFi.begin(ssid, password);
 		pinMode(RELE, OUTPUT); // настройка пина RELE на выход
-		digitalWrite(RELE, HIGH); // включение реле
+		digitalWrite(RELE, LOW); // включение реле 
 		ves.begin(DOUT, SCK1, 128); // инициализация АЦП
 		client.begin(mqttserver, 8883, net); // 8883-sec 1883 -no sec
 		myconnect();
@@ -167,12 +177,12 @@ void myconnect() {
 // В номрмальном режиме
 void messageReceived(String restopic, String payload, char * bytes, unsigned int length) {
 	Serial.println("inpuuuuut");
-	if (payload == "{\"rel\":1}") {  // Включить реле
-		digitalWrite(RELE, HIGH);
+	if (payload == "{\"rel\":1}") {  // Включить реле норамальнозамкнутые контакты
+		digitalWrite(RELE, LOW);
 		Serial.println("RELE_ON");
 	}
-	else if (payload == "{\"rel\":0}") { // Выключить реле
-		digitalWrite(RELE, LOW);
+	else if (payload == "{\"rel\":0}") { // Выключить реле норамальнозамкнутые контакты
+		digitalWrite(RELE, HIGH);
 		Serial.println("RELE_OFF");
 	}
 
@@ -438,7 +448,7 @@ void loop() {
 		{
 			Vvoter = ((ves.read_average(10) - atof(fwRead)) * atof(BRead) / (atof(fwRead) - atof(dwRead))- atof(mTara));
 			long now = millis();
-			if (Vvoter < oldVvoter - 0.2 || Vvoter > oldVvoter + 1 || now - lastMsg > 3000) // передаем сообщение при изменении массы или по  таймауту 
+			if (Vvoter < oldVvoter - 0.2 || Vvoter > oldVvoter + 1 || now - lastMsg > 30000) // передаем сообщение при изменении массы или по  таймауту 15 сек
 			{
 				delay(3000); // ждем пока  закочатся колебания вызваные изменением веса 
 				Vvoter = ((ves.read_average(10) - atof(fwRead)) * atof(BRead) / (atof(fwRead) - atof(dwRead)) - atof(mTara));
